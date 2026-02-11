@@ -13,7 +13,7 @@ if [ ! -f "$TDLIB_PATH" ]; then
         npm init -y > /dev/null 2>&1
     fi
 
-    npm install @telepilotco/tdlib-binaries-prebuilt
+    npm install --no-save @telepilotco/tdlib-binaries-prebuilt
     echo "==> TelePilot native binaries installed successfully"
 else
     echo "==> TelePilot native binaries already present"
