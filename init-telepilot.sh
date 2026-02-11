@@ -1,22 +1,16 @@
 #!/bin/sh
 set -e
 
-TDLIB_PATH="/home/node/.n8n/nodes/node_modules/@telepilotco/tdlib-binaries-prebuilt/prebuilds/libtdjson.so"
+NODES_DIR="/home/node/.n8n/nodes"
+MARKER="/home/node/.n8n/.nodes_cleaned"
 
-if [ ! -f "$TDLIB_PATH" ]; then
-    echo "==> Installing TelePilot native binaries (tdlib)..."
-    mkdir -p /home/node/.n8n/nodes
-    cd /home/node/.n8n/nodes
-
-    # Initialize package.json if not exists
-    if [ ! -f "package.json" ]; then
-        npm init -y > /dev/null 2>&1
-    fi
-
-    npm install --no-save @telepilotco/tdlib-binaries-prebuilt
-    echo "==> TelePilot native binaries installed successfully"
-else
-    echo "==> TelePilot native binaries already present"
+# One-time cleanup: remove corrupted community nodes directory
+# (caused by manual npm install that broke n8n's internal tracking)
+if [ ! -f "$MARKER" ] && [ -d "$NODES_DIR" ]; then
+    echo "==> One-time cleanup of corrupted community nodes directory..."
+    rm -rf "$NODES_DIR"
+    touch "$MARKER"
+    echo "==> Done. Reinstall community nodes via n8n Settings UI."
 fi
 
 # Delegate to original n8n entrypoint
