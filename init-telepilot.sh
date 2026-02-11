@@ -1,16 +1,15 @@
 #!/bin/sh
 set -e
 
-NODES_DIR="/home/node/.n8n/nodes"
-MARKER="/home/node/.n8n/.nodes_cleaned"
+TDLIB_SOURCE="/usr/local/lib/libtdjson.so"
+TDLIB_TARGET="/home/node/.n8n/nodes/node_modules/@telepilotco/tdlib-binaries-prebuilt/prebuilds/libtdjson.so"
 
-# One-time cleanup: remove corrupted community nodes directory
-# (caused by manual npm install that broke n8n's internal tracking)
-if [ ! -f "$MARKER" ] && [ -d "$NODES_DIR" ]; then
-    echo "==> One-time cleanup of corrupted community nodes directory..."
-    rm -rf "$NODES_DIR"
-    touch "$MARKER"
-    echo "==> Done. Reinstall community nodes via n8n Settings UI."
+# Copy TDLib binary from Docker image to the path TelePilot expects
+if [ -f "$TDLIB_SOURCE" ] && [ ! -f "$TDLIB_TARGET" ]; then
+    echo "==> Copying TDLib binary to community nodes path..."
+    mkdir -p "$(dirname "$TDLIB_TARGET")"
+    cp "$TDLIB_SOURCE" "$TDLIB_TARGET"
+    echo "==> Done: $TDLIB_TARGET"
 fi
 
 # Delegate to original n8n entrypoint
