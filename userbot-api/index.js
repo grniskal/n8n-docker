@@ -8,8 +8,8 @@ import { StringSession } from "telegram/sessions/index.js";
 const app = express();
 app.use(express.json());
 
-const API_ID = parseInt(process.env.TELEGRAM_API_ID || "37811413");
-const API_HASH = process.env.TELEGRAM_API_HASH || "023f5f4f7bc23de7daff9f980782e45a";
+const API_ID = parseInt(process.env.TELEGRAM_API_ID || "34612084");
+const API_HASH = process.env.TELEGRAM_API_HASH || "0c9fe2b6a7180190014287de5699aaf0";
 const SESSION_STRING = process.env.TELEGRAM_SESSION || "";
 const PORT = process.env.PORT || 8080;
 
