@@ -11,6 +11,8 @@ from telethon.errors import (
     ChatWriteForbiddenError,
 )
 from telethon.errors.rpcerrorlist import PeerIdInvalidError
+from telethon.tl.functions.contacts import AddContactRequest, DeleteContactsRequest
+from telethon.tl.types import InputUser
 
 API_ID = int(os.environ.get("TELEGRAM_API_ID", "34612084"))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "0c9fe2b6a7180190014287de5699aaf0")
@@ -69,9 +71,19 @@ async def send_message(request):
             entity = await client.get_entity(target)
 
         # Send with FloodWait retry (max 2 retries, max 30s wait)
+        added_contact = False
         for attempt in range(3):
             try:
                 result = await client.send_message(entity, text)
+                # Clean up: remove from contacts if we added them
+                if added_contact:
+                    try:
+                        await client(DeleteContactsRequest(id=[
+                            InputUser(entity.id, entity.access_hash)
+                        ]))
+                        print(f"Removed {chat_id} from contacts after send")
+                    except Exception:
+                        pass
                 return web.json_response({
                     "success": True,
                     "messageId": result.id,
@@ -90,15 +102,32 @@ async def send_message(request):
                         "retryAfter": wait,
                         "chatId": chat_id,
                     }, status=429)
-
-    except PeerFloodError:
-        print(f"PEER FLOOD: account is spam-blocked by Telegram for {chat_id}")
-        return web.json_response({
-            "success": False,
-            "error": "PeerFlood - account temporarily spam-blocked by Telegram",
-            "errorType": "PeerFloodError",
-            "chatId": chat_id,
-        }, status=429)
+            except PeerFloodError:
+                if attempt == 0 and not added_contact:
+                    # Workaround: add as contact, then retry
+                    print(f"PeerFlood for {chat_id}, trying add-contact workaround...")
+                    try:
+                        await client(AddContactRequest(
+                            id=InputUser(entity.id, entity.access_hash),
+                            first_name=getattr(entity, 'first_name', '') or 'User',
+                            last_name=getattr(entity, 'last_name', '') or '',
+                            phone='',
+                            add_phone_privacy_exception=False,
+                        ))
+                        added_contact = True
+                        print(f"Added {chat_id} as contact, retrying send...")
+                        await asyncio.sleep(1)
+                        continue
+                    except Exception as ce:
+                        print(f"Add contact failed: {ce}")
+                # If workaround didn't help or second PeerFlood
+                print(f"PEER FLOOD: {chat_id} (attempt {attempt+1})")
+                return web.json_response({
+                    "success": False,
+                    "error": "PeerFlood - account temporarily spam-blocked",
+                    "errorType": "PeerFloodError",
+                    "chatId": chat_id,
+                }, status=429)
     except UserPrivacyRestrictedError:
         print(f"Privacy restricted: {chat_id}")
         return web.json_response({
