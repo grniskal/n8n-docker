@@ -9,4 +9,5 @@ COPY app.py ./
 
 EXPOSE 8080
 
-CMD ["python", "app.py"]
+ENV PYTHONUNBUFFERED=1
+CMD ["python", "-u", "app.py"]

@@ -180,10 +180,12 @@ async def on_startup(app):
             session_obj = StringSession()
 
         client = TelegramClient(session_obj, API_ID, API_HASH)
-        await client.connect()
+        print("Connecting to Telegram...")
+        await asyncio.wait_for(client.connect(), timeout=30)
+        print("Connected to Telegram server")
 
         try:
-            me_info = await client.get_me()
+            me_info = await asyncio.wait_for(client.get_me(), timeout=15)
             if me_info:
                 print(f"Connected as: {me_info.first_name} ({me_info.id})")
                 is_ready = True
