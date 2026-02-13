@@ -1,8 +1,10 @@
 import os
+import asyncio
 import base64
 from aiohttp import web
 from telethon import TelegramClient
 from telethon.sessions import StringSession
+from telethon.errors import FloodWaitError, UserPrivacyRestrictedError
 
 API_ID = int(os.environ.get("TELEGRAM_API_ID", "34612084"))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "0c9fe2b6a7180190014287de5699aaf0")
@@ -60,18 +62,40 @@ async def send_message(request):
         else:
             entity = await client.get_entity(target)
 
-        result = await client.send_message(entity, text)
+        # Send with FloodWait retry (max 2 retries, max 30s wait)
+        for attempt in range(3):
+            try:
+                result = await client.send_message(entity, text)
+                return web.json_response({
+                    "success": True,
+                    "messageId": result.id,
+                    "date": str(result.date),
+                    "chatId": chat_id,
+                })
+            except FloodWaitError as fw:
+                wait = fw.seconds
+                print(f"FloodWait {wait}s for {chat_id} (attempt {attempt+1})")
+                if wait <= 30 and attempt < 2:
+                    await asyncio.sleep(wait)
+                else:
+                    return web.json_response({
+                        "success": False,
+                        "error": f"FloodWait {wait}s - too long, skipping",
+                        "retryAfter": wait,
+                        "chatId": chat_id,
+                    }, status=429)
 
+    except UserPrivacyRestrictedError:
+        print(f"Privacy restricted: {chat_id}")
         return web.json_response({
-            "success": True,
-            "messageId": result.id,
-            "date": str(result.date),
+            "success": False,
+            "error": "User privacy settings block this message",
             "chatId": chat_id,
-        })
+        }, status=403)
     except Exception as e:
-        print(f"Send error: {e}")
+        print(f"Send error ({type(e).__name__}): {e}")
         return web.json_response(
-            {"error": str(e)}, status=500
+            {"error": str(e), "errorType": type(e).__name__}, status=500
         )
 
 
