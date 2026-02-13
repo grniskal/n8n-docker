@@ -1,23 +1,29 @@
 import os
 import asyncio
+import base64
 from aiohttp import web
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
 API_ID = int(os.environ.get("TELEGRAM_API_ID", "34612084"))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "0c9fe2b6a7180190014287de5699aaf0")
-SESSION = os.environ.get("TELEGRAM_SESSION", "")
+SESSION = os.environ.get("TELEGRAM_SESSION", "").strip()
 PORT = int(os.environ.get("PORT", "8080"))
 
-client = TelegramClient(StringSession(SESSION), API_ID, API_HASH)
+client = None
 is_ready = False
+init_error = None
 
 
 async def health(request):
-    return web.json_response({
+    resp = {
         "status": "ready" if is_ready else "not_ready",
-        "session": "provided" if SESSION else "missing",
-    })
+        "session_length": len(SESSION),
+        "session_prefix": SESSION[:5] + "..." if SESSION else "empty",
+    }
+    if init_error:
+        resp["error"] = init_error
+    return web.json_response(resp)
 
 
 async def me(request):
@@ -48,8 +54,6 @@ async def send_message(request):
     try:
         target = str(chat_id)
 
-        # Telethon resolves @username automatically via contacts.resolveUsername
-        # For numeric IDs, it uses cached entities
         if target.startswith("@"):
             entity = await client.get_entity(target)
         elif target.lstrip("-").isdigit():
@@ -73,19 +77,45 @@ async def send_message(request):
 
 
 async def init_app():
-    global is_ready
+    global client, is_ready, init_error
 
-    await client.connect()
+    print(f"Session length: {len(SESSION)}")
+    print(f"Session prefix: {SESSION[:10]}..." if SESSION else "No session")
 
     if SESSION:
-        me_info = await client.get_me()
-        if me_info:
-            print(f"Connected as: {me_info.first_name} ({me_info.id})")
-            is_ready = True
-        else:
-            print("Session invalid")
+        # Debug: check decoded size
+        try:
+            raw = base64.urlsafe_b64decode(SESSION[1:] + "==")
+            print(f"Decoded session bytes: {len(raw)}")
+        except Exception as e:
+            print(f"Base64 decode test: {e}")
+
+        try:
+            session_obj = StringSession(SESSION)
+            print(f"StringSession OK: DC={session_obj.dc_id}")
+        except Exception as e:
+            init_error = f"StringSession parse error: {e}"
+            print(f"ERROR: {init_error}")
+            # Fallback: start without session
+            session_obj = StringSession()
+
+        client = TelegramClient(session_obj, API_ID, API_HASH)
+        await client.connect()
+
+        try:
+            me_info = await client.get_me()
+            if me_info:
+                print(f"Connected as: {me_info.first_name} ({me_info.id})")
+                is_ready = True
+            else:
+                init_error = "Session invalid - get_me returned None"
+                print(init_error)
+        except Exception as e:
+            init_error = f"Auth check failed: {e}"
+            print(init_error)
     else:
-        print("No session provided")
+        init_error = "No session provided"
+        print(init_error)
 
     app = web.Application()
     app.router.add_get("/health", health)
