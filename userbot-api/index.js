@@ -60,7 +60,7 @@ app.post("/sendMessage", async (req, res) => {
     });
   }
 
-  const { chatId, text } = req.body;
+  const { chatId, text, channelId } = req.body;
 
   if (!chatId || !text) {
     return res.status(400).json({
@@ -70,8 +70,29 @@ app.post("/sendMessage", async (req, res) => {
   }
 
   try {
-    // Send message (chatId can be username, user ID, or phone number)
-    const result = await client.sendMessage(chatId, { message: text });
+    let targetEntity = chatId;
+
+    // If channelId provided, try to resolve user through channel context
+    if (channelId) {
+      try {
+        console.log(`Attempting to get user ${chatId} from channel ${channelId}`);
+        const channel = await client.getEntity(channelId);
+        // Get user as participant of the channel
+        const userId = chatId.toString().replace('@', '').replace('+', '');
+        const participants = await client.getParticipants(channel, { limit: 100, search: userId });
+
+        if (participants && participants.length > 0) {
+          targetEntity = participants[0];
+          console.log(`Found user in channel: ${participants[0].id}`);
+        }
+      } catch (channelError) {
+        console.warn("Could not get user from channel:", channelError.message);
+        // Fall back to direct chatId
+      }
+    }
+
+    // Send message
+    const result = await client.sendMessage(targetEntity, { message: text });
 
     res.json({
       success: true,
