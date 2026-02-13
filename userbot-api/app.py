@@ -1,5 +1,4 @@
 import os
-import asyncio
 import base64
 from aiohttp import web
 from telethon import TelegramClient
@@ -76,14 +75,12 @@ async def send_message(request):
         )
 
 
-async def init_app():
+async def on_startup(app):
     global client, is_ready, init_error
 
     print(f"Session length: {len(SESSION)}")
-    print(f"Session prefix: {SESSION[:10]}..." if SESSION else "No session")
-
     if SESSION:
-        # Debug: check decoded size
+        print(f"Session prefix: {SESSION[:10]}...")
         try:
             raw = base64.urlsafe_b64decode(SESSION[1:] + "==")
             print(f"Decoded session bytes: {len(raw)}")
@@ -96,7 +93,6 @@ async def init_app():
         except Exception as e:
             init_error = f"StringSession parse error: {e}"
             print(f"ERROR: {init_error}")
-            # Fallback: start without session
             session_obj = StringSession()
 
         client = TelegramClient(session_obj, API_ID, API_HASH)
@@ -117,15 +113,23 @@ async def init_app():
         init_error = "No session provided"
         print(init_error)
 
+
+async def on_cleanup(app):
+    if client and client.is_connected():
+        await client.disconnect()
+
+
+def create_app():
     app = web.Application()
+    app.on_startup.append(on_startup)
+    app.on_cleanup.append(on_cleanup)
     app.router.add_get("/health", health)
     app.router.add_get("/me", me)
     app.router.add_post("/sendMessage", send_message)
-
     return app
 
 
 if __name__ == "__main__":
-    app = asyncio.get_event_loop().run_until_complete(init_app())
-    print(f"Userbot API (Telethon) listening on port {PORT}")
+    app = create_app()
+    print(f"Userbot API (Telethon) starting on port {PORT}")
     web.run_app(app, port=PORT)
