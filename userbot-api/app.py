@@ -4,7 +4,13 @@ import base64
 from aiohttp import web
 from telethon import TelegramClient
 from telethon.sessions import StringSession
-from telethon.errors import FloodWaitError, UserPrivacyRestrictedError
+from telethon.errors import (
+    FloodWaitError,
+    PeerFloodError,
+    UserPrivacyRestrictedError,
+    ChatWriteForbiddenError,
+)
+from telethon.errors.rpcerrorlist import PeerIdInvalidError
 
 API_ID = int(os.environ.get("TELEGRAM_API_ID", "34612084"))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "0c9fe2b6a7180190014287de5699aaf0")
@@ -85,11 +91,36 @@ async def send_message(request):
                         "chatId": chat_id,
                     }, status=429)
 
+    except PeerFloodError:
+        print(f"PEER FLOOD: account is spam-blocked by Telegram for {chat_id}")
+        return web.json_response({
+            "success": False,
+            "error": "PeerFlood - account temporarily spam-blocked by Telegram",
+            "errorType": "PeerFloodError",
+            "chatId": chat_id,
+        }, status=429)
     except UserPrivacyRestrictedError:
         print(f"Privacy restricted: {chat_id}")
         return web.json_response({
             "success": False,
             "error": "User privacy settings block this message",
+            "errorType": "UserPrivacyRestrictedError",
+            "chatId": chat_id,
+        }, status=403)
+    except (PeerIdInvalidError, ValueError) as e:
+        print(f"Invalid peer {chat_id}: {e}")
+        return web.json_response({
+            "success": False,
+            "error": f"Cannot resolve user: {chat_id}",
+            "errorType": type(e).__name__,
+            "chatId": chat_id,
+        }, status=404)
+    except ChatWriteForbiddenError:
+        print(f"Write forbidden: {chat_id}")
+        return web.json_response({
+            "success": False,
+            "error": "Cannot write to this chat",
+            "errorType": "ChatWriteForbiddenError",
             "chatId": chat_id,
         }, status=403)
     except Exception as e:
