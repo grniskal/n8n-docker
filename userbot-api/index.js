@@ -70,28 +70,39 @@ app.post("/sendMessage", async (req, res) => {
   }
 
   try {
-    let targetEntity = chatId;
+    let targetEntity;
 
-    // If channelId provided, try to resolve user through channel context
-    if (channelId) {
+    // Step 1: Resolve the user entity
+    // Username (@xxx) works directly via contacts.resolveUsername
+    // Numeric ID needs the entity to be cached first
+    const target = chatId.toString();
+
+    if (target.startsWith('@')) {
+      // Resolve username - this calls contacts.resolveUsername internally
+      console.log(`Resolving username: ${target}`);
+      targetEntity = await client.getEntity(target);
+      console.log(`Resolved to user ID: ${targetEntity.id}`);
+    } else if (channelId && !isNaN(channelId)) {
+      // If we have a numeric Telegram channel ID, get user from channel
       try {
-        console.log(`Attempting to get user ${chatId} from channel ${channelId}`);
-        const channel = await client.getEntity(channelId);
-        // Get user as participant of the channel
-        const userId = chatId.toString().replace('@', '').replace('+', '');
-        const participants = await client.getParticipants(channel, { limit: 100, search: userId });
-
-        if (participants && participants.length > 0) {
-          targetEntity = participants[0];
-          console.log(`Found user in channel: ${participants[0].id}`);
+        console.log(`Getting user ${target} from Telegram channel ${channelId}`);
+        const channel = await client.getEntity(parseInt(channelId));
+        const participant = await client.getParticipants(channel, { limit: 1, search: target });
+        if (participant && participant.length > 0) {
+          targetEntity = participant[0];
+          console.log(`Found user in channel: ${targetEntity.id}`);
         }
-      } catch (channelError) {
-        console.warn("Could not get user from channel:", channelError.message);
-        // Fall back to direct chatId
+      } catch (e) {
+        console.warn("Channel lookup failed:", e.message);
       }
     }
 
-    // Send message
+    // Fallback: try direct (works if entity was previously cached)
+    if (!targetEntity) {
+      targetEntity = target;
+    }
+
+    // Step 2: Send message
     const result = await client.sendMessage(targetEntity, { message: text });
 
     res.json({
